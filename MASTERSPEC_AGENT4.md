@@ -1,307 +1,511 @@
-# NeoAgri Voice — Multi-Agent Spec Sheet
-**Hackathon:** ABV IIITM Hacksagon | **Duration:** 36 Hours | **Model:** Gemini 3.1 Pro (fallback: Claude Opus 4.6)
+# NeoAgri Voice — Full From-Scratch Agent Spec
+**Hackathon:** ABV IIITM Hacksagon | **36 Hours** | **Model:** Gemini 3.1 Pro → fallback Claude Opus 4.6
+> Everything is built from scratch. No prior code exists. Read every section before writing a single line.
 
 ---
 
-## MASTER SPEC — Read Before Every Task (All Agents)
+## COMMIT RULES (Non-Negotiable for All Agents)
 
-### Project Mission
-Convert NeoAgri (drone-assisted crop disease detection app) into a **voice-first, fully offline-capable agentic app** for Indian farmers. The farmer must be able to complete every core action — finding drone markers, navigating to GPS pins, running live scans, and getting disease cures — **entirely through spoken Hindi commands, zero touch required.**
+```
+Format: [A{n}] type(scope): short description
 
----
+Types: feat | fix | chore | refactor | test
+Scope: area of change (e.g. audio, webrtc, tools, ui, db, backend)
 
-### Absolute Rules (Violations = Blocked PR)
+Examples:
+  [A1] feat(audio): setup expo-av recording with PCM16 format
+  [A2] feat(tools): add scan_nearby_markers schema and handler
+  [A3] feat(orb): VoiceOrb idle and listening state animations
+  [A4] feat(backend): POST /voice/session ephemeral token route
 
-| # | Rule | Reason |
-|---|------|---------|
-| 1 | **Never use TypeScript** — `.js` only | Project-wide contract |
-| 2 | **Never import from `@tensorflow/*`** | App model uses `react-native-fast-tflite` only |
-| 3 | **Never merge drone model and app model logic** | Drone model is Python/ONNX on server, app model is TFLite on-device |
-| 4 | **Offline always works** — every feature degrades gracefully | Field conditions have no internet |
-| 5 | **All farmer-facing text must support Hindi** — `expo-speech` with `language: 'hi-IN'` | Primary user is Hindi-speaking farmer |
-| 6 | **Frame processor worklets must stay in worklets** — no async in VisionCamera worklet context | RN-VisionCamera v4 requirement |
-| 7 | **Never use `AsyncStorage` for structured data** — use `expo-sqlite` | Offline DB contract |
-| 8 | **Never hardcode OpenAI API key in the app** — always fetch ephemeral token from `/voice/session` | Security |
-| 9 | **After any task, update `agent_docs/progress.md`** | Shared awareness between agents |
-| 10 | **Never add a new npm dependency without checking if existing SDK covers it** | Expo SDK 54 is large; duplicates bloat build |
-
----
-
-### Tech Stack Reference
-
-| Layer | Package | Version | Notes |
-|---|---|---|---|
-| Framework | `expo` | SDK 54 | Run `npx expo run:android` after native changes |
-| React Native | `react-native` | 0.81.5 | JS only, no TypeScript |
-| Navigation | `expo-router` | v4 | File-based routing in `app/` |
-| Camera | `react-native-vision-camera` | v4 | Frame processors must use worklets |
-| ML Inference | `react-native-fast-tflite` | latest | Model at `models/neoagri_app_model.tflite` |
-| Resize plugin | `vision-camera-resize-plugin` | latest | Required before TFLite input |
-| Offline DB | `expo-sqlite` | latest | All structured data goes here |
-| Location | `expo-location` | latest | GPS for radar + navigation |
-| TTS (offline) | `expo-speech` | latest | Hindi via `language: 'hi-IN'` |
-| Audio I/O | `expo-av` | latest | PCM16 recording + playback |
-| WebRTC | `react-native-webrtc` | latest | Realtime API peer connection |
-| Network | `@react-native-community/netinfo` | latest | Online/offline detection |
-| Backend | Node.js + Express + Postgres | — | `neo-backend` repo |
+Rules:
+  - Commit after EVERY completed todo item — not in batches
+  - Max 5 files per commit
+  - Never commit broken/crashing code — test before commit
+  - Write a one-line description in the commit body if the change is non-obvious
+```
 
 ---
 
-### Existing Assets — Do Not Modify or Recreate
+## MASTER SPEC — All Agents Read First
 
-| Asset | Path | Status |
+### What We're Building
+NeoAgri Voice is a **voice-only agentic mobile app** for Indian soybean farmers. Built on Expo SDK 54 / React Native 0.81.5. The farmer speaks Hindi commands — the app detects crop diseases using an on-device TFLite model, navigates to GPS pins from drone scans, and works completely offline in the field.
+
+### Two Separate Backends (Never Confuse)
+| Backend | Repo | Role |
 |---|---|---|
-| App TFLite model | `models/neoagri_app_model.tflite` | ✅ Done |
-| Disease labels + cures | `models/disease_labels.json` | ✅ Done |
-| Offline sync engine | `app/db/offlineSync.js` | ✅ Done |
-| SQLite schema + queries | `app/db/` | ✅ Done |
-| Frame processor (inference) | `app/components/LiveModeCamera.js` | ✅ Done |
-| GPS radar screen | `app/radar.jsx` | ✅ Done |
-| Drone backend | `website_station_backend/` | ✅ Done |
-| Node backend (base routes) | `neo-backend/` | ✅ Done, 2 new routes only |
+| `neo-backend` | Agent 4 builds | Node/Express API — farmer app talks to this |
+| `website_station_backend` | **Pre-exists, do not touch** | Python drone server — out of scope |
 
----
-
-### Model Output Reference (Agent 2 must know this)
+### Project Structure (Both Repos — Create From Scratch)
 
 ```
-TFLite output: float32[4] — index order is critical:
-  [0] → Caterpillar and Semilooper Pest Attack  (severity: High)
-  [1] → Healthy_Soyabean                         (severity: None)
-  [2] → Soyabean_Frog_Leaf_Eye                   (severity: Medium)
-  [3] → Soyabean_Spectoria_Brown_Spot             (severity: Medium)
+neoagri-mobile/                     ← Expo app
+├── app/
+│   ├── index.jsx                   ← Main voice screen (Agent 3)
+│   ├── live.jsx                    ← Camera + TFLite screen (Agent 3)
+│   └── radar.jsx                   ← GPS navigation screen (Agent 3)
+├── components/
+│   └── voice/
+│       ├── VoiceOrb.js             (Agent 3)
+│       ├── TranscriptFeed.js       (Agent 3)
+│       ├── DiseaseCard.js          (Agent 3)
+│       └── StatusBanner.js         (Agent 3)
+├── lib/
+│   ├── useVoiceSession.js          (Agent 1)
+│   ├── audioPlayer.js              (Agent 1)
+│   ├── voiceKeywords.js            (Agent 1)
+│   ├── VoiceAgentTools.js          (Agent 2)
+│   ├── voiceEventEmitter.js        (Agent 2)
+│   └── voiceStyles.js              (Agent 3)
+├── db/
+│   ├── schema.js                   (Agent 2)
+│   └── offlineSync.js              (Agent 2)
+├── constants/
+│   └── voicePrompt.js              (Agent 2)
+├── models/
+│   ├── neoagri_app_model.tflite    ← Binary — download separately
+│   └── disease_labels.json         (Agent 2)
+├── agent_docs/
+│   ├── progress.md                 ← Each agent updates after every phase
+│   ├── architecture.md
+│   ├── backend.md
+│   └── native_setup.md
+└── .env
 
-Confidence: argMax of output array
-Labels + cure strings: models/disease_labels.json (keyed by disease name)
+neo-backend/                        ← Express API
+├── src/
+│   ├── app.js
+│   ├── db.js
+│   ├── routes/
+│   │   ├── payload.js
+│   │   ├── markers.js
+│   │   ├── scans.js
+│   │   └── voice.js                (Agent 4)
+│   └── migrations/
+│       ├── 001_init.sql
+│       └── 002_voice_logs.sql
+├── .env
+└── package.json
 ```
 
----
+### Absolute Rules
+1. **JavaScript only** — never `.ts`, never `interface`, never `: string` type annotations
+2. **react-native-fast-tflite** for ML — never TensorFlow.js
+3. **expo-sqlite** for structured data — never AsyncStorage
+4. **expo-speech** with `language: 'hi-IN'` for all Hindi TTS
+5. **Offline always degrades gracefully** — check network before every API call
+6. **VisionCamera worklets stay as worklets** — no async calls inside frame processors
+7. **Never hardcode OpenAI API key in mobile app** — always use ephemeral token from `/voice/session`
+8. **Update `agent_docs/progress.md` after every phase** — this is how agents stay in sync
 
-### Inter-Agent Interfaces (Contracts)
+### TFLite Model Output (Agent 2 must use this exactly)
+```
+Model: models/neoagri_app_model.tflite
+Input: float32[1][224][224][3]  (normalized 0–1, RGB)
+Output: float32[4]
 
-These are the exact function signatures each agent must export. Any change to a signature requires ALL dependent agents to be notified immediately.
+Index → Disease mapping:
+  0 → "Caterpillar and Semilooper Pest Attack"  severity: High
+  1 → "Healthy Soyabean"                         severity: None
+  2 → "Soyabean Frog Leaf Eye"                   severity: Medium
+  3 → "Soyabean Spectoria Brown Spot"            severity: Medium
+```
 
+### Inter-Agent Contracts (Do Not Change Signatures Without Notifying All Agents)
 ```js
-// ── Agent 1 exports (lib/useVoiceSession.js) ──────────────────────────
+// Agent 1 exports from lib/useVoiceSession.js
 export function useVoiceSession(toolHandlers)
-// Returns: { status, transcript, isListening, startSession, stopSession, speak }
-// status: 'idle' | 'connecting' | 'listening' | 'speaking' | 'offline'
-// toolHandlers: object mapping toolName → async function(args) → result string
+→ { status, transcript, history, isListening, amplitude, startSession, stopSession, speak }
+// status: 'idle'|'connecting'|'listening'|'speaking'|'offline'
+// amplitude: number 0.0–1.0 (mic level, used by VoiceOrb)
 
-// ── Agent 2 exports (lib/VoiceAgentTools.js) ─────────────────────────
-export const TOOL_SCHEMAS     // Array of OpenAI function_call tool schema objects
-export const TOOL_HANDLERS    // Object: { toolName: async (args) => string }
-export const SYSTEM_PROMPT    // String: OpenAI system prompt with Hindi instruction
-export async function dispatchTool(toolName, args)  // Routes call to correct handler
+// Agent 2 exports from lib/VoiceAgentTools.js
+export const TOOL_SCHEMAS   // Array — OpenAI function_call schemas
+export const TOOL_HANDLERS  // Object — { toolName: async (args) => string }
+export const SYSTEM_PROMPT  // String
+export async function dispatchTool(name, args) → string
 
-// ── Agent 3 exports (components/voice/) ──────────────────────────────
-export default VoiceOrb        // components/voice/VoiceOrb.js — animated mic button
-export default TranscriptFeed  // components/voice/TranscriptFeed.js — scrolling transcript
-export default DiseaseCard     // components/voice/DiseaseCard.js — disease result display
-export default StatusBanner    // components/voice/StatusBanner.js — connection state
+// Agent 2 exports from lib/voiceEventEmitter.js
+export const voiceEventEmitter  // EventEmitter instance
+// Events: 'NAVIGATE' | 'DISEASE_RESULT' | 'SCAN_COMPLETE'
 
-// ── Agent 4 exports (neo-backend new routes) ─────────────────────────
-POST /voice/session  → { client_secret: string, session_id: string, expires_at: number }
-POST /voice/log      → { ok: true }
+// Agent 2 exports from db/offlineSync.js
+export async function getOfflineMarkers() → Array<Marker>
+export async function saveScan(scanData) → void
+export async function getPendingScans() → Array<Scan>
+export async function syncPendingScans() → { synced: number }
+export async function initDB() → void
+
+// Agent 4 backend contracts
+POST /voice/session → { client_secret, session_id, expires_at }
+POST /voice/log     → { ok: true }
+POST /payload/receive → { ok: true }       (drone backend — NOT voice related)
+GET  /markers       → Array<Marker>
+POST /scan/sync     → { synced: number }
 ```
 
----
-
-### Git Worktree Strategy (Run These Commands Before Starting)
-
+### Git Worktree Setup (Run Once — All Agents)
 ```bash
-# Each agent runs these in the neoagri-mobile root:
-git worktree add ../neoagri-voice-pipeline  voice/pipeline   # Agent 1
-git worktree add ../neoagri-voice-tools     voice/tools      # Agent 2
-git worktree add ../neoagri-voice-ui        voice/ui         # Agent 3
-git worktree add ../neoagri-voice-backend   voice/backend    # Agent 4
+# In neoagri-mobile root:
+git init && git add . && git commit -m "chore: initial project scaffold"
+git branch voice/pipeline && git branch voice/tools
+git branch voice/ui && git branch voice/backend
 
-# Merge order at end: tools → pipeline → ui → backend → main
+git worktree add ../neoagri-pipeline  voice/pipeline   # Agent 1
+git worktree add ../neoagri-tools     voice/tools      # Agent 2
+git worktree add ../neoagri-ui        voice/ui         # Agent 3
+# Agent 4 works in neo-backend repo, separate from mobile
+
+# Merge order when done: tools → pipeline → ui → main
 ```
 
----
-
-### Environment Variables
-
+### Environment Files
 ```env
-# .env (neoagri-mobile)
+# neoagri-mobile/.env
 EXPO_PUBLIC_API_URL=https://your-neo-backend.railway.app
 EXPO_PUBLIC_OPENAI_MODEL=gpt-4o-realtime-preview-2025-12-17
 
-# .env (neo-backend)
+# neo-backend/.env
 OPENAI_API_KEY=sk-...
-DATABASE_URL=postgresql://...
+DATABASE_URL=postgresql://user:pass@host:5432/neoagri
 PORT=3001
+NODE_ENV=production
 ```
 
 ---
 ---
 
+---
+---
 
-## AGENT 4 — Backend + Integration QA
-**Branch:** `voice/backend` | **Owner:** Agent 4
-**Dependency:** Needs OpenAI API key access. Must deploy before Agent 1 can test against real token endpoint.
-**Timeline:** Hours 0–6 (backend routes, deploy), Hours 18–26 (integration QA), Hours 30–36 (demo prep)
-
-### Mission
-Add 2 routes to `neo-backend`, deploy it live (Railway/Render), and own **end-to-end integration** — making sure Agent 1's session hook, Agent 2's tools, Agent 3's UI, and the backend all work together without breaking offline mode or the existing drone payload flow.
+## AGENT 4 — Backend + Integration
+**Branch:** `voice/backend` (separate `neo-backend` repo) | **Unblocks:** All agents (needs deployed URL)
+**HIGHEST PRIORITY:** Deploy `/voice/session` in first 3 hours.
 
 ---
 
-### File Deliverables
+### Day-0 Setup
 
-#### `neo-backend/routes/voice.js` (New File)
+- [ ] **S4.1** Init Node.js project
+  ```bash
+  mkdir neo-backend && cd neo-backend
+  npm init -y
+  npm install express pg dotenv cors helmet morgan
+  npm install -D nodemon
+  ```
+  `[A4] chore(init): init express project with pg, cors, helmet`
 
-```js
-// Route 1: Create ephemeral Realtime API session
-router.post('/voice/session', async (req, res) => {
-  try {
-    const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-realtime-preview-2025-12-17',
-        voice: 'alloy',
-      }),
-    })
-    const data = await response.json()
-    if (!response.ok) return res.status(500).json({ error: data })
-    res.json({
-      client_secret: data.client_secret.value,
-      session_id: data.id,
-      expires_at: data.client_secret.expires_at,
-    })
-  } catch (err) {
-    res.status(500).json({ error: 'Session creation failed', detail: err.message })
+- [ ] **S4.2** Create `src/app.js` — Express app skeleton
+  ```js
+  const express = require('express')
+  const cors = require('cors')
+  const helmet = require('helmet')
+  const morgan = require('morgan')
+  
+  const app = express()
+  app.use(helmet())
+  app.use(cors())
+  app.use(morgan('tiny'))
+  app.use(express.json({ limit: '10mb' }))  // drone images are large
+  
+  app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
+  
+  module.exports = app
+  ```
+  `[A4] feat(app): create Express app with middleware`
+
+- [ ] **S4.3** Create `src/db.js` — Postgres connection pool
+  ```js
+  const { Pool } = require('pg')
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  module.exports = { query: (text, params) => pool.query(text, params) }
+  ```
+  `[A4] feat(db): create Postgres connection pool`
+
+- [ ] **S4.4** Create `src/server.js` — entry point
+  ```js
+  require('dotenv').config()
+  const app = require('./app')
+  const PORT = process.env.PORT || 3001
+  app.listen(PORT, () => console.log(`neo-backend running on ${PORT}`))
+  ```
+  `[A4] feat(server): create server entry point`
+
+---
+
+### Phase 1 — Database Migrations (Run These First)
+
+- [ ] **1.1** Create `src/migrations/001_init.sql`
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+  
+  CREATE TABLE IF NOT EXISTS drone_markers (
+    id SERIAL PRIMARY KEY,
+    capture_id UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    disease TEXT,
+    confidence DOUBLE PRECISION,
+    leaf_image_b64 TEXT,
+    schema_version TEXT DEFAULT '1.0',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  
+  CREATE TABLE IF NOT EXISTS manual_scans (
+    id SERIAL PRIMARY KEY,
+    capture_id UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    disease TEXT NOT NULL,
+    confidence DOUBLE PRECISION NOT NULL,
+    timestamp_utc TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  ```
+  `[A4] feat(db): create 001_init migration for drone_markers and manual_scans`
+
+- [ ] **1.2** Create `src/migrations/002_voice_logs.sql`
+  ```sql
+  CREATE TABLE IF NOT EXISTS voice_logs (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT,
+    command TEXT,
+    tool_called TEXT,
+    result_preview TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  ```
+  `[A4] feat(db): create 002 migration for voice_logs`
+
+- [ ] **1.3** Create `src/migrate.js` runner and run both migrations
+  ```js
+  async function migrate() {
+    const fs = require('fs')
+    const db = require('./db')
+    const files = ['001_init.sql', '002_voice_logs.sql']
+    for (const f of files) {
+      const sql = fs.readFileSync(`./src/migrations/${f}`, 'utf8')
+      await db.query(sql)
+      console.log(`✓ ${f}`)
+    }
+    process.exit(0)
   }
-})
+  migrate().catch(e => { console.error(e); process.exit(1) })
+  ```
+  `[A4] feat(db): create migration runner and run all migrations`
 
-// Route 2: Log voice interactions (for demo analytics + debugging)
-router.post('/voice/log', async (req, res) => {
-  const { session_id, command, tool_called, result_preview, timestamp } = req.body
-  try {
+---
+
+### Phase 2 — Core API Routes
+
+- [ ] **2.1** Create `src/routes/payload.js` — drone scan receiver
+  ```js
+  router.post('/payload/receive', async (req, res) => {
+    const { payload } = req.body
+    // Validate schema_version === '1.0' and type === 'leaf_capture'
     await db.query(
-      `INSERT INTO voice_logs (session_id, command, tool_called, result_preview, created_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [session_id, command, tool_called, result_preview, timestamp || new Date()]
+      `INSERT INTO drone_markers (capture_id, latitude, longitude, disease, confidence, leaf_image_b64)
+       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (capture_id) DO NOTHING`,
+      [payload.capture_id, payload.latitude, payload.longitude,
+       payload.model_result.disease, payload.model_result.confidence, payload.leaf_image_b64]
     )
     res.json({ ok: true })
-  } catch (err) {
-    // Non-critical — don't fail if logging fails
-    console.error('Voice log error:', err.message)
+  })
+  ```
+  `[A4] feat(routes): create POST /payload/receive for drone scan ingestion`
+
+- [ ] **2.2** Create `src/routes/markers.js` — marker fetcher
+  ```js
+  router.get('/markers', async (req, res) => {
+    const result = await db.query(
+      `SELECT capture_id, latitude, longitude, disease, confidence, created_at
+       FROM drone_markers ORDER BY created_at DESC LIMIT 100`
+    )
+    res.json(result.rows)
+  })
+  ```
+  `[A4] feat(routes): create GET /markers for offline sync`
+
+- [ ] **2.3** Create `src/routes/scans.js` — manual scan sync
+  ```js
+  router.post('/scan/sync', async (req, res) => {
+    const { scans } = req.body  // Array of scan objects
+    let synced = 0
+    for (const scan of scans) {
+      await db.query(
+        `INSERT INTO manual_scans (capture_id, latitude, longitude, disease, confidence, timestamp_utc)
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (capture_id) DO NOTHING`,
+        [scan.capture_id, scan.latitude, scan.longitude, scan.disease, scan.confidence, scan.timestamp]
+      )
+      synced++
+    }
+    res.json({ synced })
+  })
+  ```
+  `[A4] feat(routes): create POST /scan/sync for manual scan bulk upload`
+
+---
+
+### Phase 3 — Voice Routes (HIGHEST PRIORITY — Deploy ASAP)
+
+- [ ] **3.1** Create `src/routes/voice.js` — ephemeral token route
+  ```js
+  router.post('/voice/session', async (req, res) => {
+    try {
+      const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: 'gpt-4o-realtime-preview-2025-12-17', voice: 'alloy' }),
+      })
+      const data = await response.json()
+      if (!response.ok) return res.status(500).json({ error: data })
+      res.json({
+        client_secret: data.client_secret.value,
+        session_id: data.id,
+        expires_at: data.client_secret.expires_at,
+      })
+    } catch (err) {
+      res.status(500).json({ error: err.message })
+    }
+  })
+  ```
+  `[A4] feat(voice): create POST /voice/session ephemeral token endpoint`
+
+- [ ] **3.2** Create `/voice/log` route
+  ```js
+  router.post('/voice/log', async (req, res) => {
+    const { session_id, command, tool_called, result_preview } = req.body
+    try {
+      await db.query(
+        `INSERT INTO voice_logs (session_id, command, tool_called, result_preview) VALUES ($1,$2,$3,$4)`,
+        [session_id, command, tool_called, result_preview]
+      )
+    } catch (_) { /* non-critical */ }
     res.json({ ok: true })
-  }
-})
-```
+  })
+  ```
+  `[A4] feat(voice): create POST /voice/log for interaction analytics`
 
-#### `neo-backend/migrations/voice_logs.sql` (New File)
-
-```sql
-CREATE TABLE IF NOT EXISTS voice_logs (
-  id SERIAL PRIMARY KEY,
-  session_id TEXT,
-  command TEXT,
-  tool_called TEXT,
-  result_preview TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-#### `neo-backend/app.js` (Modify — add route)
-
-```js
-// Add after existing route registrations:
-const voiceRoutes = require('./routes/voice')
-app.use('/voice', voiceRoutes)
-```
+- [ ] **3.3** Register all routes in `src/app.js`
+  ```js
+  app.use('/', require('./routes/payload'))
+  app.use('/', require('./routes/markers'))
+  app.use('/', require('./routes/scans'))
+  app.use('/voice', require('./routes/voice'))
+  ```
+  `[A4] feat(app): register all route modules`
 
 ---
 
-### Deployment Checklist (Hours 0–4)
+### Phase 4 — Deployment
 
-1. Push `neo-backend` with new routes to GitHub
-2. Deploy to Railway (fastest for Node+Postgres):
-   - `railway login && railway up`
-   - Set env var: `OPENAI_API_KEY=sk-...`
-   - Get deployed URL → add to neoagri-mobile `.env` as `EXPO_PUBLIC_API_URL`
-3. Test both routes with `curl`:
-   ```bash
-   curl -X POST https://your-app.railway.app/voice/session
-   # Should return: { client_secret, session_id, expires_at }
+- [ ] **4.1** Create `Procfile` and `railway.json`
+  ```
+  # Procfile
+  web: node src/server.js
+  ```
+  `[A4] chore(deploy): add Procfile for Railway deployment`
 
-   curl -X POST https://your-app.railway.app/voice/log \
-     -H "Content-Type: application/json" \
-     -d '{"session_id":"test","command":"hello","tool_called":"none"}'
-   # Should return: { ok: true }
-   ```
-4. Share the deployed URL with all agents immediately
+- [ ] **4.2** Push to GitHub + deploy on Railway
+  ```bash
+  railway login
+  railway init
+  railway up
+  railway variables set OPENAI_API_KEY=sk-... DATABASE_URL=postgresql://...
+  ```
+  `[A4] chore(deploy): deploy to Railway and set environment variables`
 
----
+- [ ] **4.3** Run migrations on production DB
+  ```bash
+  railway run node src/migrate.js
+  ```
+  `[A4] chore(deploy): run database migrations on production`
 
-### Integration QA Checklist (Hours 18–26)
-
-Run these full end-to-end tests after all 4 agents have merged to `main`:
-
-**Online Voice Flow:**
-- [ ] App cold start → tap orb → session connects in < 4 seconds
-- [ ] Say "नज़दीक के मार्कर दिखाओ" → `scan_nearby_markers` tool fires → AI responds in Hindi
-- [ ] Say "कैमरा चालू करो" → `start_live_mode` fires → navigates to live.jsx
-- [ ] Say "पहले वाले पर जाओ" → `navigate_to_pin` fires → navigates to radar.jsx
-- [ ] Live scan detects disease → DiseaseCard appears → AI speaks cure in Hindi
-
-**Offline Flow:**
-- [ ] Turn on airplane mode → status banner shows "ऑफलाइन"
-- [ ] Say "स्कैन" → keyword match → `start_live_mode` fires → `expo-speech` speaks Hindi confirmation
-- [ ] Scan result saves to SQLite
-- [ ] Turn airplane mode off → `sync_pending_scans` auto-triggers → SQLite clears
-
-**No Regressions:**
-- [ ] Existing drone payload flow still works (POST to `/payload/receive` unaffected)
-- [ ] Existing marker fetch still works (GET `/markers` unaffected)
-- [ ] `offlineSync.js` background sync still works independently of voice
+- [ ] **4.4** Test all endpoints live with curl
+  ```bash
+  BASE=https://your-app.up.railway.app
+  curl $BASE/health
+  curl -X POST $BASE/voice/session
+  curl -X POST $BASE/voice/log -H "Content-Type: application/json" -d '{"session_id":"test"}'
+  curl $BASE/markers
+  ```
+  Share the deployed `BASE` URL with all agents immediately.
+  `[A4] test(deploy): verify all endpoints return correct responses on production`
 
 ---
 
-### Demo Script (Prepare This — Hours 30–36)
+### Phase 5 — Integration QA (Hours 22–30)
 
-Rehearse this exact flow for judges. Speaks directly to the problem statement.
+- [ ] **5.1** End-to-end test: online voice flow
+  - Cold start → tap orb → session token fetched → WebRTC connected
+  - Say "नज़दीक के marker दिखाओ" → `scan_nearby_markers` fires → Hindi response plays
+  `[A4] test(integration): verify online voice flow end-to-end`
 
-```
-[Scene: Show judge the app in idle state]
-"यह NeoAgri है — बिना किसी button के, सिर्फ आवाज़ से।"
+- [ ] **5.2** End-to-end test: tool routing
+  - Say "कैमरा चालू करो" → navigates to `live.jsx`
+  - Say "पहले वाले पर जाओ" → navigates to `radar.jsx`
+  `[A4] test(integration): verify all navigation tool calls route correctly`
 
-[Tap orb to start]
-Say: "खेत में क्या बीमारी है?"
-→ AI: "आपके खेत में 3 संक्रमित स्थान मिले — Frog Eye 92%, Brown Spot 87%..."
+- [ ] **5.3** End-to-end test: offline fallback
+  - Airplane mode ON → `status = 'offline'`
+  - Say "scan" → keyword matches → expo-speech plays Hindi
+  - Scan result saved to SQLite
+  - Airplane mode OFF → `syncPendingScans` auto-triggers → SQLite clears
+  `[A4] test(integration): verify offline fallback and auto-sync`
 
-Say: "सबसे खतरनाक वाले पर ले चलो"
-→ AI: "ठीक है, नेविगेशन शुरू। 2.3 किलोमीटर दूर।"
-→ [Radar screen opens automatically]
-
-Say: "ठीक है, कैमरा चालू करो"
-→ [Live camera opens — show leaf to camera]
-→ [Disease detected — DiseaseCard slides up]
-→ AI: "सोयाबीन में Frog Eye बीमारी मिली — मध्यम। मैन्कोज़ेब 2.5g प्रति लीटर पानी में डालें।"
-
-[Turn on airplane mode]
-Say: "स्कैन करो"
-→ [expo-speech in Hindi: "कैमरा चालू हो गया — ऑफलाइन मोड"]
-→ [Camera works offline — result saves to SQLite]
-"यह बिना internet के भी काम करता है।"
-```
+- [ ] **5.4** Regression test: existing drone payload
+  - POST mock payload to `/payload/receive`
+  - GET `/markers` → confirms marker exists
+  `[A4] test(regression): verify drone payload ingestion unaffected by voice changes`
 
 ---
 
-### Acceptance Criteria
+### Phase 6 — Demo Preparation (Hours 30–36)
 
-- [ ] `/voice/session` returns valid ephemeral token (test with actual OpenAI call)
-- [ ] `/voice/log` inserts to Postgres without error
-- [ ] Backend deployed and publicly accessible (not localhost)
-- [ ] All integration QA checks pass
-- [ ] Demo script rehearsed — full flow completes in under 3 minutes
-- [ ] Existing `/payload/receive` and `/markers` routes untouched and functional
+- [ ] **6.1** Seed database with 3 mock drone markers near the venue GPS coordinates
+  ```bash
+  railway run node src/seed.js  # create seed.js with INSERT statements for demo markers
+  ```
+  `[A4] chore(demo): seed production DB with 3 demo markers near venue`
+
+- [ ] **6.2** Write and rehearse demo script (exact Hindi commands + expected responses):
+  ```
+  1. "खेत में क्या बीमारी है?"
+     → "[N] संक्रमित स्थान मिले..."
+  2. "सबसे खतरनाक वाले पर ले चलो"
+     → Radar opens
+  3. "कैमरा चालू करो"
+     → Camera opens → scan → DiseaseCard appears
+  4. [Airplane mode ON] "scan करो"
+     → Offline Hindi TTS responds
+  ```
+  `[A4] docs(demo): write and commit demo script with exact Hindi commands`
+
+- [ ] **6.3** Final build test — `npx expo run:android` from clean state
+  `[A4] chore(final): verify clean Android build before demo`
 
 ---
+
+## Phase Completion Tracker
+
+| Phase | Agent 1 | Agent 2 | Agent 3 | Agent 4 |
+|---|---|---|---|---|
+| Day-0 Setup | S1.1–S1.6 | S2.1–S2.3 | S3.1–S3.4 | S4.1–S4.4 |
+| Phase 1 | Audio Recording | SQLite DB | VoiceOrb | DB Migrations |
+| Phase 2 | WebRTC | Tool Schemas ⚡ | StatusBanner | Core Routes |
+| Phase 3 | Data Channel | Disease Labels | TranscriptFeed | Voice Routes ⚡ |
+| Phase 4 | Hook Assembly | Tool Handlers | DiseaseCard | Deployment ⚡ |
+| Phase 5 | Offline Fallback | dispatchTool | Main Screen | Integration QA |
+| Phase 6 | — | — | Camera Screen | Demo Prep |
+| Phase 7 | — | — | GPS Radar | — |
+
+> ⚡ = Critical path item. Prioritize above all else.
+
+---
+
+*NeoAgri Voice — ABV IIITM Hacksagon 2026 | Built in 36 hours*
