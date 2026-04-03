@@ -12,6 +12,9 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 // Routes will be registered here
+app.use('/', require('./routes/payload'));
+app.use('/', require('./routes/markers'));
+app.use('/scan', require('./routes/scans'));
 app.use('/voice', require('./routes/voice'));
 
 module.exports = app;
