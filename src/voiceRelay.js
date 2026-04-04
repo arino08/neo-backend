@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
 const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime';
-const MODEL = 'gpt-4o-realtime-preview-2025-12-17';
+const MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime';
 
 /**
  * Attach WebSocket relay to an HTTP server.

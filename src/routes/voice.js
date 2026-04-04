@@ -10,7 +10,7 @@ router.post('/session', async (req, res) => {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model: 'gpt-4o-realtime-preview-2025-12-17', voice: 'alloy' }),
+      body: JSON.stringify({ model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime', voice: 'alloy' }),
     });
     const data = await response.json();
     if (!response.ok) return res.status(500).json({ error: data });
