@@ -1,7 +1,7 @@
 async function migrate() {
   const fs = require('fs');
   const db = require('./db');
-  const files = ['001_init.sql', '002_voice_logs.sql', 'drone_bookings.sql'];
+  const files = ['001_init.sql', '002_voice_logs.sql', 'drone_bookings.sql', '003_farmer_accounts.sql'];
   for (const f of files) {
     const sql = fs.readFileSync(`./src/migrations/${f}`, 'utf8');
     await db.query(sql);

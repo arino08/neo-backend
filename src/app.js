@@ -17,5 +17,6 @@ app.use('/', require('./routes/markers'));
 app.use('/scan', require('./routes/scans'));
 app.use('/voice', require('./routes/voice'));
 app.use('/drone', require('./routes/drone'));
+app.use('/auth', require('./routes/auth'));
 
 module.exports = app;
