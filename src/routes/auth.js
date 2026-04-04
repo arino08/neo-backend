@@ -3,6 +3,18 @@ const router = express.Router();
 const db = require('../db');
 const crypto = require('crypto');
 
+// Twilio (optional — gracefully falls back to console.log if not configured)
+let twilioClient = null;
+if (process.env.TWILIO_SID && process.env.TWILIO_AUTH && process.env.TWILIO_PHONE) {
+  try {
+    const twilio = require('twilio');
+    twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
+    console.log('✓ Twilio SMS enabled');
+  } catch {
+    console.log('⚠ Twilio package not installed — using console OTP');
+  }
+}
+
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -11,15 +23,32 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+async function sendOtpSms(phone, otp) {
+  if (twilioClient) {
+    try {
+      await twilioClient.messages.create({
+        body: `NeoAgri OTP: ${otp} — 10 मिनट में समाप्त।`,
+        from: process.env.TWILIO_PHONE,
+        to: phone,
+      });
+      console.log(`📱 OTP sent via SMS to ${phone}`);
+      return true;
+    } catch (err) {
+      console.error('Twilio SMS failed:', err.message);
+    }
+  }
+  // Fallback: console log for demo
+  console.log(`\n📱 OTP for ${phone}: ${otp}\n`);
+  return false;
+}
+
 // POST /auth/send-otp
-// Body: { phone: "+919876543210" }
-// Generates a 6-digit OTP, stores it with 10-min expiry
 router.post('/send-otp', async (req, res) => {
   const { phone, name } = req.body;
   if (!phone) return res.status(400).json({ error: 'Phone number required' });
 
   const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   try {
     await db.query(
@@ -33,13 +62,9 @@ router.post('/send-otp', async (req, res) => {
       [phone, name || null, otp, expiresAt]
     );
 
-    // Log OTP to console for demo (replace with actual SMS in production)
-    console.log(`\n📱 OTP for ${phone}: ${otp}\n`);
+    const sentViaSms = await sendOtpSms(phone, otp);
 
-    // In production, send via SMS here:
-    // await sendSms(phone, `Your NeoAgri OTP is ${otp}. Valid for 10 minutes.`);
-
-    res.json({ ok: true, message: 'OTP sent' });
+    res.json({ ok: true, message: 'OTP sent', channel: sentViaSms ? 'sms' : 'console' });
   } catch (err) {
     console.error('Send OTP error:', err.message);
     res.status(500).json({ error: 'Failed to send OTP' });
@@ -47,8 +72,6 @@ router.post('/send-otp', async (req, res) => {
 });
 
 // POST /auth/verify-otp
-// Body: { phone, otp }
-// Returns auth_token on success
 router.post('/verify-otp', async (req, res) => {
   const { phone, otp } = req.body;
   if (!phone || !otp) return res.status(400).json({ error: 'Phone and OTP required' });
@@ -62,12 +85,10 @@ router.post('/verify-otp', async (req, res) => {
     const farmer = result.rows[0];
     if (!farmer) return res.status(404).json({ error: 'Phone not found. Request OTP first.' });
 
-    // Check expiry
     if (new Date() > new Date(farmer.otp_expires_at)) {
       return res.status(400).json({ error: 'OTP expired. Request a new one.' });
     }
 
-    // Check attempts (max 5)
     if (farmer.otp_attempts >= 5) {
       return res.status(429).json({ error: 'Too many attempts. Request a new OTP.' });
     }
@@ -81,7 +102,6 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ error: `Wrong OTP. ${remaining} attempts left.` });
     }
 
-    // Valid OTP — issue auth token
     const token = generateToken();
     await db.query(
       'UPDATE farmer_accounts SET verified = TRUE, auth_token = $1, otp = NULL WHERE phone = $2',
@@ -100,8 +120,6 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // GET /auth/me
-// Header: Authorization: Bearer <token>
-// Returns farmer profile
 router.get('/me', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No token' });
