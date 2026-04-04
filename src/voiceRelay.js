@@ -29,7 +29,6 @@ function attachVoiceRelay(server) {
     const openaiWs = new WebSocket(`${OPENAI_REALTIME_URL}?model=${MODEL}`, {
       headers: {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'OpenAI-Beta': 'realtime=v1',
       },
     });
 
